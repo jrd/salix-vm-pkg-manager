@@ -1,0 +1,30 @@
+# vim: set syn=sh et ai sw=2 st=2 ts=2 tw=0:
+#Packager: _USERNAME_ <_EMAIL_>
+
+pkgname=
+pkgver=
+pkgrel=1_LETTERS_
+#arch=noarch
+source=()
+sourcetemplate=http://people.salixos.org/_USER_/salix/$pkgname/$pkgver-\$arch-$pkgrel/
+docs=("authors" "install" "readme" "copying")
+#url=
+#dotnew=()
+#CFLAGS=
+#CXXFLAGS=
+#options=('noextract')
+
+#doinst() {
+#
+#}
+
+slackdesc=\
+(
+#|-----handy-ruler------------------------------------------------------|
+"$pkgname ()"
+)
+
+build() {
+  cd $SRC/$pkgname-$pkgver || return 1
+  python setup.py install --prefix=/usr --root=$PKG || return 1
+}

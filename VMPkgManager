@@ -1,0 +1,222 @@
+#!/bin/sh
+# vim: et sw=2 st=2 ts=2 tw=0
+cd "$(dirname "$(readlink -f "$0")")"
+ARCHIS="32 64"
+VERSIONS=""
+DISTRO=""
+. ./VMPkgManager.conf
+
+error() {
+  /bin/echo -e "$@" >&2
+}
+
+if [ -z "$ARCHIS" ] || [ -z "$VERSIONS" ] || [ -z "$DISTRO" ]; then
+  error "You must define the variable ARCHIS, VERSIONS and DISTRO\nin VMPkgManager.conf"
+  exit 1
+fi
+
+VB="$(which virtualbox 2>/dev/null)"
+if [ -z "$VB" ]; then
+  error "This only works if virtualbox is installed. Please install virtualbox first."
+  exit 1
+fi
+VBDIR="$(dirname "$(readlink -f "$VB")")"
+VBM="$VBDIR"/VBoxManage
+
+syntax() {
+  echo "$(basename "$0") -a <ARCHI> -v <VERSION> [-nox] [-x] <OPERATION>"
+  echo "  ARCHI: $ARCHIS"
+  echo "  VERSION: $VERSIONS"
+  echo "  OPERATION: run save off info status ssh showsshport installssh uninstallssh"
+  echo "  -nox: start headless even if the DISPLAY variable is set"
+  echo "  -x: start with X on :0 even if DISPLAY variable is not set"
+}
+check_correct_arg() {
+  LST="$1"
+  EL="$2"
+  ok=false
+  for i in $LST; do
+    if [ "$i" = "$EL" ]; then
+      ok=true
+      break
+    fi
+  done
+  eval "$ok"
+}
+exist() {
+  $VBM list vms|grep -q "^\"$1\""
+}
+isrunning() {
+  $VBM list runningvms|grep -q "^\"$1\""
+}
+
+operation=''
+archi=''
+version=''
+forcenox=0
+while [ -n "$1" ]; do
+  case "$1" in
+    -a)
+      shift
+      if [ -n "$1" ]; then
+        archi=$1
+        shift
+      fi
+      ;;
+    -v)
+      shift
+      if [ -n "$1" ]; then
+        version=$1
+        shift
+      fi
+      ;;
+    -x)
+      shift
+      if [ -z "$DISPLAY" ]; then
+        DISPLAY=:0
+      fi
+      ;;
+    -nox)
+      shift
+      forcenox=1
+      ;;
+    -h|--help)
+      shift
+      syntax
+      exit 0
+      ;;
+    *)
+      operation=$1
+      shift
+      break
+      ;;
+  esac
+done
+if [ -z "$archi" ] || [ -z "$version" ] || [ -z "$operation" ]; then
+  syntax
+  exit 1
+fi
+if ! check_correct_arg "$ARCHIS" $archi; then
+  error "$archi is not supported"
+  exit 1
+fi
+if ! check_correct_arg "$VERSIONS" $version; then
+  error "$version is not supported"
+  exit 1
+fi
+VM=Pkg${archi}${DISTRO}${version}
+if ! exist $VM; then
+  error "VM $VM does not exist. Create it first."
+  exit 1
+fi
+case $operation in
+  run)
+    VMOPT=''
+    if [ $forcenox -eq 1 ] || [ -z "$DISPLAY" ]; then
+      VMOPT='-type headless'
+    fi
+    if ! isrunning $VM; then
+      $VBM startvm $VM $VMOPT
+    fi
+    ;;
+  save)
+    if isrunning $VM; then
+      $VBM controlvm $VM savestate
+    fi
+    ;;
+  info)
+    $VBM showvminfo $VM
+    ;;
+  status)
+    $VBM showvminfo $VM|grep ^State
+    ;;
+  off)
+    if isrunning $VM; then
+      $VBM controlvm $VM acpipowerbutton
+    fi
+    ;;
+  ssh)
+    if isrunning $VM; then
+      $VBM showvminfo $VM|grep -q 'guest port = 22$'
+      if [ $? -eq 0 ]; then
+        sshport=$($VBM showvminfo $VM|grep 'guest port = 22$'|sed 's/.*host port = \([0-9]\+\),.*/\1/')
+        ok=true
+        if which nc >/dev/null 2>&1; then
+          echo ''|nc -w 1 -q 1 localhost $sshport >/dev/null 2>&1 || ok=false
+        fi
+        if $ok; then
+          echo "ssh -t -p $sshport root@localhost screen -d -R -U -O"
+          ssh -t -p $sshport root@localhost screen -d -R -U -O
+        else
+          error "ssh server do not listen on port 22 in the guest"
+          exit 2
+        fi
+      else
+        error "ssh portforward not installed."
+        exit 2
+      fi
+    fi
+    ;;
+  showsshport)
+    $VBM showvminfo $VM|grep -q 'guest port = 22$'
+    if [ $? -eq 0 ]; then
+      sshport=$($VBM showvminfo $VM|grep 'guest port = 22$'|sed 's/.*host port = \([0-9]\+\),.*/\1/')
+      echo "ssh port: $sshport"
+    else
+      error "ssh portforward not installed."
+      exit 2
+    fi
+    ;;
+  installssh)
+    ok=true
+    isrunning $VM && ok=false
+    $VBM showvminfo $VM|grep ^State|grep -q saved && ok=false
+    if $ok; then
+      if [ -e ./VBoxPortForward ]; then
+        if ! $VBM showvminfo $VM|grep -q 'guest port = 22$'; then
+          port=0
+          while [ "$port" -eq 0 ]; do
+            /bin/echo -n "Port: "
+            read port
+            port=$((1 * $port))
+          done
+          echo ./VBoxPortForward $VM TCP 22 $port
+          ./VBoxPortForward $VM TCP 22 $port
+        else
+          echo "ssh already installed."
+        fi
+      else
+        error "VBoxPortForward should be present in the same directory."
+        exit 2
+      fi
+    else
+      error "VM must not running or be in saved state."
+      exit 2
+    fi
+    ;;
+  uninstallssh)
+    ok=true
+    isrunning $VM && ok=false
+    $VBM showvminfo $VM|grep ^State|grep -q saved && ok=false
+    if $ok; then
+      if [ -e ./VBoxPortForward ]; then
+        if $VBM showvminfo $VM|grep -q 'guest port = 22$'; then
+          echo ./VBoxPortForward $VM TCP 22 0
+          ./VBoxPortForward $VM TCP 22 0
+        else
+          echo "ssh already uninstalled."
+        fi
+      else
+        error "VBoxPortForward should be present in the same directory."
+        exit 2
+      fi
+    else
+      error "VM must not running or be in saved state."
+      exit 2
+    fi
+    ;;
+  *)
+    error "$operation not yet implemented or not recognized."
+    exit 3
+    ;;
+esac

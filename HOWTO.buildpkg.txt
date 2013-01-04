@@ -1,0 +1,34 @@
+- Create a VM using:
+  * RAM: 512M
+  * Variable HardDisk: 20G
+  * IO-APIC
+  * UTC
+  * Absolute Pointer
+  * 2 CPUs
+  * PAE
+  * VT-x/AMD-V
+  * Video RAM: 64M
+  * 3D acceleration
+  * buildpkg(32|64) mounted as buildpkg (name should be different)
+- Install Salix ISO
+  * autopartition
+  * full
+  * root password: salix
+  * user/pwd: pkg/(empty)
+  * append=rootfstype=ext4 resume=/dev/sda2
+- Configure
+  * /etc/fstab
+tmpfs            /tmp             tmpfs       defaults,size=30% 0   0
+  * hostname: salixpkg.local
+  * empty password for "pkg"
+  * deactivate unused services
+  * upgrade
+  * install kernel-headers kernel-source
+  * install udisks
+  * install all solibs packages (but not googlechrome one)
+  * install depfinder depcheck fakeroot cmake slk-pkgcheck
+  * install VB Guest Additions
+  * add 'pkg' user to the vboxsf group
+  * cp -r /media/sf_buildpkg/home/.??* /media/sf_buildpkg/home/* ~/
+  * ln -s /media/sf_buildpkg/pkg .
+- VM Snapshot

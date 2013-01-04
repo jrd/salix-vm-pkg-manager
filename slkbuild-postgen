@@ -1,0 +1,120 @@
+#!/bin/bash
+version=1.0
+
+EXT=txz		# pkg extension
+SRC=src		# src file extension
+SRCS=true	# true = list sources separately (requires properly named
+			# src file in SLKBUILD dir
+
+usage() {
+	cat <<EOF
+$(basename $0) [-sug -con <SLKBUILD|dir containing SLKBUILD>]...
+generates a suitable sourceforge report from a/multiple SLKBUILD(s) and
+outputs it to STDOUT
+
+OPTIONS:
+	-v    outputs version information
+	-sug  include suggests file
+	-con  include conflicts file
+	
+EXAMPLE:
+	$(basename $0) -sug -con packages/anki/ -sug packages/wxPython/
+	generates the sourceforge report for anki with sug(gests) and
+	con(flicts) file and for wxPython only with sug(gests)
+EOF
+exit
+}
+
+version() {
+	echo "Version: $version"
+	exit
+}
+
+[ "$1" == "-v" ] && version
+slkbuilds="$@"
+
+
+# everything we don't want to keep for the next slkbuild
+cleanup() {
+	unset pkgname pkgver pkgrel arch sourcetemplate pkg url CON SUG
+}
+
+parse() {
+  if [ -z "$(grep '^arch=' "$1" 2>/dev/null)" ]; then
+    if ls $(dirname "$1")/*-i486-*.src >/dev/null 2>&1; then
+      arch=i486
+    fi
+    if ls $(dirname "$1")/*-x86_64-*.src >/dev/null 2>&1; then
+      arch=x86_64
+    fi
+  fi
+  tmp=$(mktemp)
+	sed -n '1,/^slackdesc=/{s,\\\$,$,;p}' "$1" | head -n-1 > $tmp
+  . $tmp
+  rm $tmp
+  unset tmp
+	pkg=$pkgname-$pkgver-$arch-$pkgrel
+	srcfile=$(dirname $1)/$pkg.src	# assume that there is a srcfile in the SLKBUILD dir
+	sourcetemplate=$(echo $sourcetemplate | sed -e 's,/$,,')	# strip trailing /
+	if [ ! -r $srcfile ]; then	# if the srcfile is not accesible we can't add its content
+		SRC=src; SRCS=""
+	fi
+}
+
+generate() {
+	cat <<EOF
+'''Homepage:'''
+$url
+
+'''Package:'''
+EOF
+	for ext in md5 $EXT dep $SRC $SUG $CON; do
+		echo $sourcetemplate/$pkg.$ext
+	done
+	cat <<EOF
+
+'''Log:'''
+$sourcetemplate/build-$pkg.log
+EOF
+
+	if [ "$SRCS" == "true" ]; then
+		# we want sources to be displayed seperatly
+		cat <<EOF
+
+'''Buildscript and source:'''
+$(cat $srcfile)
+EOF
+	fi
+}
+
+validate() {
+	[ -d $slkbuild ] && slkbuild=$slkbuild/SLKBUILD
+	[ -r $slkbuild ] || continue
+}
+
+# check how many slkbuilds we have
+length=0
+for slkbuild in $slkbuilds; do
+	validate
+	((length++))
+done
+
+# if none -> usage
+[ $length -eq 0 ] && usage
+
+#otherwise process them
+cleanup
+i=1
+for slkbuild in $slkbuilds; do
+	[ "$slkbuild" == "-sug" ] && SUG=sug	# handle -sug
+	[ "$slkbuild" == "-con" ] && CON=con	# and -con
+	
+	validate	
+	parse $slkbuild
+	generate $slkbuild
+	cleanup
+	
+	# for the last slkbuild no newlines
+	[ $((length)) -eq $i ] || echo -ne "[[BR]]\n[[BR]]\n[[BR]]\n"
+	((i++))
+done

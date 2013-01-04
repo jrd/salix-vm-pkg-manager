@@ -1,0 +1,7 @@
+#!/bin/sh
+cd "$(dirname "$0")"
+if screen -wipe|grep -q '\.pkgs	'; then
+  screen -R pkgs
+else
+  screen -S pkgs -c ./screenrc
+fi

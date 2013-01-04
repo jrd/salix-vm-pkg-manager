@@ -1,0 +1,51 @@
+# vim: set syn=sh et ai sw=2 st=2 ts=2 tw=0:
+#Packager: _USERNAME_ <_EMAIL_>
+
+pkgname=
+pkgver=
+pkgrel=1_LETTERS_
+#arch=noarch
+source=()
+sourcetemplate=http://people.salixos.org/_USER_/salix/$pkgname/$pkgver-\$arch-$pkgrel/
+docs=("readme" "install" "copying" "changelog" "authors" "news" "todo")
+#url=
+#dotnew=()
+#CFLAGS=
+#CXXFLAGS=
+options=('noautodotnew')
+
+#doinst() {
+#
+#}
+
+slackdesc=\
+(
+#|-----handy-ruler------------------------------------------------------|
+"$pkgname ()"
+)
+
+build() {
+  cd $SRC/$pkgname-$pkgver || return 1
+  ./configure \
+    --prefix=/usr \
+    --libdir=/usr/lib${LIBDIRSUFFIX} \
+    --localstatedir=/var \
+    --sysconfdir=/etc \
+    --disable-schemas-install \
+    --with-mateconf-source="xml::/etc/mateconf/mateconf.xml.defaults" \
+    --build=$arch-slackware-linux || return 1
+  make -j $numjobs || return 1
+  make install DESTDIR=$PKG || return 1
+  # Install mateconf schemas in the package
+  export MATECONF_CONFIG_SOURCE="xml::$PKG/etc/mateconf/mateconf.xml.defaults"
+  if [ -d $PKG/etc/mateconf/schemas ]; then
+    install -v -d -m755 $PKG/etc/mateconf/mateconf.xml.defaults
+    SCHEMAS=$PKG/etc/mateconf/schemas
+    for schema in $SCHEMAS/*.schemas; do
+      mateconftool-2 --makefile-install-rule $schema
+    done
+    # Reset / Verify correct permissions
+    ( cd $PKG/etc/mateconf ; find . -type d -exec chmod 755 {} \; )
+    ( cd $PKG/etc/mateconf ; find . -type f -exec chmod 644 {} \; )
+  fi
+}

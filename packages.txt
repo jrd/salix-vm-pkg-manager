@@ -1,0 +1,2 @@
+# each package must have its own directory with a script 'getlastversion.sh' which takes the url as first argument, the md5sum of the html page as second argument and return the last version for this package. If the last version could be determined, return 0 for no change and -1 if the md5sum is different.
+# The url is get from package-name/url, the md5sum from package-name/md5sum and the current version from package-name/version.

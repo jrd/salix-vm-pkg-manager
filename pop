@@ -1,0 +1,4 @@
+#!/bin/sh
+F="$1"
+sed -n '1p' "$F"
+sed -i '1d' "$F"

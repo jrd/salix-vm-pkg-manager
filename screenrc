@@ -1,0 +1,32 @@
+utf8 on
+defutf8 on
+startup_message off
+defscrollback 10000
+hardstatus alwayslastline
+hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{=kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B}%Y-%m-%d %{W}%c %{g}]'
+# Print message on status if activity is detected in a hidden window.
+defmonitor off
+activity "activity in window %n: %t"
+msgwait 10
+# Tell screen that xterm can scroll.
+termcapinfo xterm|xterms|xs|rxvt ti@:te@
+# Bind Shift+PgUp/PgDn.
+bindkey -m "^[[5;2~" stuff ^b
+bindkey -m "^[[6;2~" stuff ^f
+################
+# 256 colors
+# http://frexx.de/xterm-256-notes/
+# terminfo and termcap for nice 256 color terminal
+# allow bold colors - necessary for some reason
+attrcolor b ".I"
+# tell screen how to set colors. AB = background, AF=foreground
+termcapinfo xterm 'Co#256:AB=\E[48;5;%dm:AF=\E[38;5;%dm'
+# erase background with current bg color
+defbce "on"
+
+escape ^bB
+defescape ^bB
+
+screen -t "32" 0
+screen -t "64" 1
+screen -t "Packages" 2

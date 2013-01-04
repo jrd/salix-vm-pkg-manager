@@ -1,0 +1,71 @@
+#!/bin/sh
+VM="$1"
+TYPE="$2"
+PORTG="$3"
+PORTH="$4"
+if [ "$VM" = "" ]; then
+  echo "Usage :"
+  echo "  VBoxPortForward VM-name Type(TCP/UDP) Guest-Port Host-Port"
+  echo "Host-Port at 0 to cancel the forward"
+  echo "Listen only on localhost and only on the first NAT card"
+  exit 1
+fi
+VB="$(which virtualbox 2>/dev/null)"
+if [ -z "$VB" ]; then
+  error "This only works if virtualbox is installed. Please install virtualbox first."
+  exit 1
+fi
+VBDIR="$(dirname "$(readlink -f "$VB")")"
+VBM="$VBDIR"/VBoxManage
+oracleapi=$(virtualbox --help|head -n1|grep -q Oracle && echo 1 || echo 0)
+if [ -z "$TYPE" ]; then
+  echo "Listing Port Forwards for $VM"
+  T=$(mktemp)
+  if [ $oracleapi -eq 1 ]; then
+    $VBM showvminfo $VM | grep "^NIC 1 Rule" > $T
+    for P in tcp udp; do
+      grep "protocol = $P" $T 2>&1 >/dev/null || continue
+      /bin/echo -e "\n/-----\\ \n| $P |\n\\-----/"
+      NAMES="$(grep "protocol = $P" $T | sed 's@.* name = \([^,]*\),.*@\1@')"
+      for N in $NAMES; do
+        GP=$(grep "name = $N," $T | sed 's@.*guest port = \(.*\)@\1@')
+        HP=$(grep "name = $N," $T | sed 's@.*host port = \([^,]*\),.*@\1@')
+        echo "  * $GP --> $HP"
+      done
+    done
+  else
+    $VBM getextradata $VM enumerate | grep "VBoxInternal/Devices/pcnet/0/LUN#0/Config/" > $T
+    for P in TCP UDP; do
+      grep "/Protocol, Value: $P" $T 2>&1 >/dev/null || continue
+      echo -e "\n/-----\\ \n| $P |\n\\-----/"
+      NAMES="$(grep "/Protocol, Value: $P" $T | sed 's@Key: VBoxInternal/Devices/pcnet/0/LUN#0/Config/\([^/]*\)/.*@\1@')"
+      for N in $NAMES; do
+        GP=$(grep "/Config/$N/GuestPort" $T | sed 's@.*/GuestPort, Value: \(.*\)@\1@')
+        HP=$(grep "/Config/$N/HostPort" $T | sed 's@.*/HostPort, Value: \(.*\)@\1@')
+        echo "  * $GP --> $HP"
+      done
+    done
+  fi
+  rm -f $T
+else
+  MAPPING_NAME="${TYPE}_${PORTG}"
+  if [ $PORTH -eq 0 ]; then
+    if [ $oracleapi -eq 1 ]; then
+      $VBM modifyvm $VM --natpf1 delete $MAPPING_NAME
+    else
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/HostPort"
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/GuestPort"
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/Protocol"
+    fi
+    echo "Unmapped $PORTG for VM $VM"
+  else
+    if [ $oracleapi -eq 1 ]; then
+      $VBM modifyvm $VM --natpf1 "$MAPPING_NAME,$TYPE,localhost,$PORTH,,$PORTG"
+    else
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/HostPort" "$PORTH"
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/GuestPort" "$PORTG"
+      $VBM setextradata "$VM" "VBoxInternal/Devices/pcnet/0/LUN#0/Config/$MAPPING_NAME/Protocol" "$TYPE"
+    fi
+    echo "Mapped $PORTG for VM $VM to $PORTH"
+  fi
+fi
